@@ -1,0 +1,8 @@
+{
+  "network/network-interfaces": {
+    "title": "Network Interfaces",
+    "view": "vuci-app-network-interfaces",
+    "files": ["/etc/config/interfaces"],
+    "index": 20
+  }
+}
