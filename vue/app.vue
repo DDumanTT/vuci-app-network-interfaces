@@ -35,193 +35,120 @@
         </template>
       </vuci-typed-section>
       <template #footer>
-        <a-space size="large" style="width: 100%; justify-content: center">
-          <span>Interface name</span>
-          <a-input v-model="interfaceName" />
-          <a-button type="primary" @click="openModal">Create</a-button>
-        </a-space>
+        <a-form-model
+          ref="form"
+          :model="form"
+          :rules="rules"
+          layout="inline"
+          :hideRequiredMark="true"
+          :style="{ display: 'flex', 'justify-content': 'center' }"
+        >
+          <a-form-model-item label="Interface name" prop="name">
+            <a-input v-model="form.name" />
+          </a-form-model-item>
+          <a-form-model-item>
+            <a-button type="primary" @click="handleCreate">Create</a-button>
+          </a-form-model-item>
+        </a-form-model>
       </template>
     </vuci-form>
-
-    <a-modal
-      :title="`Interface ${selectedInterface}`"
-      v-model="modalVisible"
-      :footer="null"
-    >
-      <vuci-form
-        uci-config="interfaces"
-        @applied="handleSubmit"
-        ref="modalForm"
-        :key="`modal-${modalKey}`"
-      >
-        <vuci-named-section
-          :collapsible="false"
-          :name="newSectionName"
-          type="interface"
-          label="Interface"
-          :card="false"
-          ref="modalInputs"
-          v-slot="{ s }"
-        >
-          <vuci-form-item-select
-            :uci-section="s"
-            :initial="selectedProtocol"
-            :options="protocols"
-            name="protocol"
-            label="Protocol"
-            @change="handleProtocolSelect"
-            required
-          />
-          <vuci-form-item-input
-            :uci-section="s"
-            name="address"
-            label="Address"
-            rules="ip4addr"
-            depend="protocol === 'static'"
-            required
-          />
-          <vuci-form-item-input
-            :uci-section="s"
-            name="netmask"
-            label="Netmask"
-            rules="netmask4"
-            depend="protocol === 'static'"
-            required
-          />
-          <vuci-form-item-input
-            :uci-section="s"
-            name="gateway"
-            label="Gateway"
-            rules="ip4addr"
-            depend="protocol === 'static'"
-            required
-          />
-          <vuci-form-item-list
-            :uci-section="s"
-            name="dns"
-            label="DNS"
-            rules="ip4addr"
-            depend="protocol === 'static'"
-            required
-          />
-        </vuci-named-section>
-        <template #footer>
-          <a-button type="primary" @click="handleSubmit">Save</a-button>
-          <a-button type="danger" @click="modalVisible = false"
-            >Cancel</a-button
-          >
-        </template>
-      </vuci-form>
-    </a-modal>
+    <interface-modal
+      :key="modalKey"
+      :name="selectedInterface"
+      :visible="modalVisible"
+      :sid="newSectionName"
+      @cancel="modalVisible = false"
+      @submit="handleSubmit"
+    />
   </div>
 </template>
 
 <script>
+import InterfaceModal from './components/InterfaceModal.vue'
+
 export default {
-  data() {
+  components: { InterfaceModal },
+  data () {
     return {
       columns: [
         {
-          name: "name",
-          label: "Interface name",
+          name: 'name',
+          label: 'Interface name'
         },
         {
-          name: "address",
-          label: "Address",
+          name: 'address',
+          label: 'Address'
         },
         {
-          name: "netmask",
-          label: "Netmask",
+          name: 'netmask',
+          label: 'Netmask'
         },
-        { name: "actions" },
+        { name: 'actions' }
       ],
       modalVisible: false,
-      interfaceName: "",
-      selectedInterface: "",
-      protocols: [
-        ["static", "Static"],
-        ["dhcp", "DHCP"],
-      ],
-      newSectionName: "",
-      selectedProtocol: "static",
+      form: {
+        name: ''
+      },
+      rules: {
+        name: [
+          {
+            required: true,
+            message: 'Please enter an interface name',
+            trigger: 'blur'
+          },
+          {
+            max: 15,
+            message: 'Interface name is too long (15 max.)',
+            trigger: 'blur'
+          }
+        ]
+      },
+      selectedInterface: '',
+      newSectionName: '',
       tableKey: 0,
-      modalKey: 0,
-    };
+      modalKey: 0
+    }
   },
   computed: {},
   methods: {
-    openModal() {
-      if (!this.interfaceName) return;
-      this.reloadModal();
-      this.selectedInterface = this.interfaceName;
-      this.newSectionName = this.$uci.add("interfaces", "interface");
-      this.modalVisible = true;
+    handleCreate () {
+      this.$refs.form.validate(async (valid) => {
+        if (!valid) return
+        this.$uci.reset()
+        const sid = this.$uci.add('interfaces', 'interface')
+        this.$uci.set('interfaces', sid, 'name', this.form.name)
+        await this.$uci.save()
+        await this.$uci.apply()
+        this.reloadTable()
+        this.$refs.form.resetFields()
+      })
     },
-    handleProtocolSelect(e) {
-      this.selectedProtocol = e.vuciSection.get(
-        this.newSectionName,
-        "protocol"
-      );
+    handleSubmit () {
+      this.reloadTable()
+      this.modalVisible = false
     },
-    async handleSubmit() {
-      const valid = await this.$refs.modalForm.validate();
-      if (!valid) return;
-      this.$spin();
-      if (
-        this.$refs.modalInputs.get(this.newSectionName, "protocol") === "dhcp"
-      ) {
-        this.$uci.del("interfaces", this.newSectionName);
-        await this.$uci.save();
-        await this.$uci.apply();
-        this.newSectionName = this.$uci.add("interfaces", "interface");
-      }
-      this.$uci.set(
-        "interfaces",
-        this.newSectionName,
-        "name",
-        this.interfaceName
-      );
-      this.$uci.set(
-        "interfaces",
-        this.newSectionName,
-        "protocol",
-        this.$refs.modalInputs.get(this.newSectionName, "protocol")
-      );
-      await this.$refs.modalForm.save();
-      await this.$uci.save();
-      await this.$uci.apply();
-      this.reloadTable();
-      this.reloadModal();
-      this.interfaceName = "";
-      this.newSectionName = "";
-      this.$spin(false);
-      this.modalVisible = false;
+    handleEdit (s) {
+      this.reloadModal()
+      this.selectedInterface = s.name
+      this.newSectionName = s['.name']
+      this.modalVisible = true
     },
-    handleEdit(s) {
-      this.reloadModal();
-      this.selectedInterface = s.name;
-      this.newSectionName = s[".name"];
-      this.modalVisible = true;
-    },
-    handleDelete(s) {
+    handleDelete (s) {
       this.$confirm({
         title: `Delete interface ${s.name}?`,
         onOk: async () => {
-          await this.$uci.del("interfaces", s[".name"]);
-          await this.$uci.save();
-          await this.reloadTable();
-        },
-      });
+          await this.$uci.del('interfaces', s['.name'])
+          await this.$uci.save()
+          await this.reloadTable()
+        }
+      })
     },
-    async reloadTable() {
-      this.tableKey += 1;
+    async reloadTable () {
+      this.tableKey += 1
     },
-    reloadModal() {
-      if (this.$refs.modalForm) {
-        this.$refs.modalForm.reset();
-        this.$refs.modalForm.load();
-      }
-    },
-  },
-};
+    reloadModal () {
+      this.modalKey += 1
+    }
+  }
+}
 </script>
